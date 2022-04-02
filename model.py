@@ -1,4 +1,5 @@
 from torch import nn
+import torch.nn.functional as F
 
 
 class HardSwish(nn.Module):  # 5.2 Nonlinearities
@@ -6,8 +7,8 @@ class HardSwish(nn.Module):  # 5.2 Nonlinearities
         super(HardSwish, self).__init__()
         self.inplace = inplace
 
-    def forward(self, x):  # TODO
-        return
+    def forward(self, x):
+        return F.relu6(x+3., inplace=self.inplace) * 1./6. * x
 
 
 class HardSigmoid(nn.Module):  # 5.2 Nonlinearsities
@@ -15,8 +16,8 @@ class HardSigmoid(nn.Module):  # 5.2 Nonlinearsities
         super(HardSigmoid, self).__init__()
         self.inplace = inplace
 
-    def forward(self, x):  # TODO
-        return
+    def forward(self, x):
+        return F.relu6(x+3., inplace=self.inplace) * 1./6.
 
 
 class SqueezeExcite(nn.Module):  # TODO
