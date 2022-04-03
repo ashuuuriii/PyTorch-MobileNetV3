@@ -20,12 +20,20 @@ class HardSigmoid(nn.Module):  # 5.2 Nonlinearsities
         return F.relu6(x+3., inplace=self.inplace) * 1./6.
 
 
-class SqueezeExcite(nn.Module):  # TODO
-    def __init__(self):  # 5.3 Large squeeze-and-excite, reduce to 1/4
+class SqueezeExcite(nn.Module):
+    def __init__(self, c, r=4, inplace=True):  # 5.3 Large squeeze-and-excite, reduce to 1/4
         super(SqueezeExcite, self).__init__()
+        self.squeeze = nn.AdaptiveAvgPool2d(1)  # ((N), C, output_size, output_size), reduces to ((N), C, 1, 1)
+        self.excite = nn.Sequential(nn.Linear(c, c//r, bias=False),
+                                    nn.ReLU(inplace),
+                                    nn.Linear(c//r, c, bias=False),
+                                    HardSigmoid(inplace))
 
     def forward(self, x):
-        return
+        bs, c, _, _ = x.shape
+        y = self.squeeze(x).view(bs, c)
+        y = self.excite(y).view(bs, c, 1, 1)
+        return x * y.expand_as(x)
 
 
 class InvertedBottleNeck(nn.Module):  # TODO
