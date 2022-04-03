@@ -115,8 +115,34 @@ class InvertedBottleNeck(nn.Module):
         return y + residual
 
 
+class Classifier(nn.Module):
+    def __init__(self, head_type: str, last_in: int, last_out: int, n_classes: int):
+        super(Classifier, self).__init__()
+        self.head_type = head_type
+        if self.head_type == 'fc':
+            self.classification_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
+                                                     nn.Linear(last_out, n_classes),
+                                                     nn.Softmax(1))
+        elif self.head_type == 'conv':
+            self.classification_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
+                                                     nn.Conv2d(last_in, last_out, 1, stride=1),
+                                                     HardSwish(inplace=True),
+                                                     nn.Conv2d(last_out, n_classes, 1))
+        else:
+            raise NotImplementedError
+
+    def forward(self, x):
+        x = x.mean(3).mean(2) if self.head_type == 'fc' else x
+        y = self.classification_head(x)
+
+        if self.head_type == 'conv':
+            return y.view(y.shape[0], -1)
+        else:
+            return y
+
+
 class MobileNetV3(nn.Module):  # TODO
-    def __init__(self, model_size: str):
+    def __init__(self, model_size: str, n_classes: int, head_type: str):
         assert model_size == 'small' or model_size == 'large',\
             "model_size should be 'small' or 'large'."
 
@@ -130,6 +156,7 @@ class MobileNetV3(nn.Module):  # TODO
             last_out = 1280
 
         self.model = self._build_model(model_size, last_in)
+        self.classifier = Classifier(head_type, last_in, last_out, n_classes)
 
     def forward(self, x):
         return
