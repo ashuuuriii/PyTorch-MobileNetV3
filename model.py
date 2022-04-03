@@ -129,12 +129,30 @@ class MobileNetV3(nn.Module):  # TODO
             last_in = 960
             last_out = 1280
 
-        self.model = self._build_model(model_size)
+        self.model = self._build_model(model_size, last_in)
 
     def forward(self, x):
         return
 
-    def _build_model(self, model_size:str) -> nn.Sequential:
+    def _build_model(self, model_size: str, last_in: int) -> nn.Sequential:
         modules = nn.Sequential()
+        ic = 16
+
+        # Build the first block.
+        block_0 = nn.Sequential(nn.Conv2d(3, ic, 3, stride=2, padding=calc_pad(3), bias=False),
+                                nn.BatchNorm2d(ic),
+                                HardSwish(inplace=True))
+        modules.append(block_0)
+
+        # Build the MobileNet bottleneck blocks.
+        defs = module_defs[model_size]
+        for bn in defs:
+            modules.append(InvertedBottleNeck(ic, bn['oc'], bn['k'], bn['exp'], bn['s'], bn['se'], bn['act']))
+            ic = bn['oc']
+
+        # Build the last few blocks.
+        modules.append(nn.Conv2d(ic, last_in, 1, stride=1, bias=False))
+        modules.append(nn.BatchNorm2d(last_in))
+        modules.append(HardSwish(inplace=True))
 
         return modules
