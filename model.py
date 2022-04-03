@@ -159,7 +159,9 @@ class MobileNetV3(nn.Module):  # TODO
         self.classifier = Classifier(head_type, last_in, last_out, n_classes)
 
     def forward(self, x):
-        return
+        y = self.model(x)
+        y = self.classifier(y)
+        return y
 
     def _build_model(self, model_size: str, last_in: int) -> nn.Sequential:
         modules = nn.Sequential()
