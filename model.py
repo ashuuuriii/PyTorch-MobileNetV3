@@ -34,6 +34,10 @@ module_defs = {
 }
 
 
+def calc_pad(k: int) -> int:
+    return (k - 1) // 2
+
+
 class HardSwish(nn.Module):  # 5.2 Nonlinearities
     def __init__(self, inplace=False):
         super(HardSwish, self).__init__()
@@ -68,12 +72,47 @@ class SqueezeExcite(nn.Module):
         return x * y.expand_as(x)
 
 
-class InvertedBottleNeck(nn.Module):  # TODO
-    def __init__(self):
+class InvertedBottleNeck(nn.Module):
+    def __init__(self,
+                 ic: int,
+                 oc: int,
+                 k: int,
+                 exp: int,
+                 s: int,
+                 se: bool,
+                 act: str):
         super(InvertedBottleNeck, self).__init__()
+        self.pw1 = nn.Sequential(nn.Conv2d(ic, exp, 1, bias=False),
+                                 nn.BatchNorm2d(exp))
+        self.dw = nn.Sequential(nn.Conv2d(exp, exp, k, stride=s, groups=exp, padding=calc_pad(k), bias=False),
+                                nn.BatchNorm2d(exp))
+        self.pw2 = nn.Sequential(nn.Conv2d(exp, oc, 1, bias=False),
+                                 nn.BatchNorm2d(oc))
+        self.se = SqueezeExcite(exp) if se else None
+
+        if act == 'RE':
+            self.act = nn.ReLU(inplace=True)
+        elif act == 'HS':
+            self.act = HardSwish(inplace=True)
+        else:
+            raise NotImplementedError
 
     def forward(self, x):
-        return
+        residual = x
+        y = self.pw1(x)
+        y = self.act(y)
+        y = self.dw(y)
+        y = self.act(y)
+
+        if self.se:
+            y = self.se(y)
+
+        y = self.pw2(y)
+
+        if self.drop_out:
+            y = self.drop_out(y)
+
+        return y + residual
 
 
 class MobileNetV3(nn.Module):  # TODO
