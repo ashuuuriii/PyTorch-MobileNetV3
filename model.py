@@ -93,6 +93,7 @@ class InvertedBottleNeck(nn.Module):
                                  nn.BatchNorm2d(oc))
         self.se = SqueezeExcite(exp) if se else None
         self.drop_out = nn.Dropout(drop_rate) if drop_rate else None
+        self.residual_connection = True if ic == oc and s == 1 else False
 
         if act == 'RE':
             self.act = nn.ReLU(inplace=True)
@@ -116,7 +117,10 @@ class InvertedBottleNeck(nn.Module):
         if self.drop_out:
             y = self.drop_out(y)
 
-        return y + residual
+        if self.residual_connection:
+            return y + residual
+        else:
+            return y
 
 
 class Classifier(nn.Module):
