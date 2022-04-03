@@ -1,3 +1,5 @@
+from typing import Optional
+
 from torch import nn
 import torch.nn.functional as F
 
@@ -80,7 +82,8 @@ class InvertedBottleNeck(nn.Module):
                  exp: int,
                  s: int,
                  se: bool,
-                 act: str):
+                 act: str,
+                 drop_rate: Optional[float] = None):
         super(InvertedBottleNeck, self).__init__()
         self.pw1 = nn.Sequential(nn.Conv2d(ic, exp, 1, bias=False),
                                  nn.BatchNorm2d(exp))
@@ -89,6 +92,7 @@ class InvertedBottleNeck(nn.Module):
         self.pw2 = nn.Sequential(nn.Conv2d(exp, oc, 1, bias=False),
                                  nn.BatchNorm2d(oc))
         self.se = SqueezeExcite(exp) if se else None
+        self.drop_out = nn.Dropout(drop_rate) if drop_rate else None
 
         if act == 'RE':
             self.act = nn.ReLU(inplace=True)
@@ -142,7 +146,7 @@ class Classifier(nn.Module):
 
 
 class MobileNetV3(nn.Module):  # TODO
-    def __init__(self, model_size: str, n_classes: int, head_type: str):
+    def __init__(self, model_size: str, n_classes: int, head_type: str, drop_rate: Optional[float] = 0.):
         assert model_size == 'small' or model_size == 'large',\
             "model_size should be 'small' or 'large'."
 
@@ -155,7 +159,7 @@ class MobileNetV3(nn.Module):  # TODO
             last_in = 960
             last_out = 1280
 
-        self.model = self._build_model(model_size, last_in)
+        self.model = self._build_model(model_size, last_in, drop_rate)
         self.classifier = Classifier(head_type, last_in, last_out, n_classes)
 
     def forward(self, x):
@@ -163,7 +167,7 @@ class MobileNetV3(nn.Module):  # TODO
         y = self.classifier(y)
         return y
 
-    def _build_model(self, model_size: str, last_in: int) -> nn.Sequential:
+    def _build_model(self, model_size: str, last_in: int, drop_rate: float) -> nn.Sequential:
         modules = nn.Sequential()
         ic = 16
 
@@ -176,7 +180,7 @@ class MobileNetV3(nn.Module):  # TODO
         # Build the MobileNet bottleneck blocks.
         defs = module_defs[model_size]
         for bn in defs:
-            modules.append(InvertedBottleNeck(ic, bn['oc'], bn['k'], bn['exp'], bn['s'], bn['se'], bn['act']))
+            modules.append(InvertedBottleNeck(ic, bn['oc'], bn['k'], bn['exp'], bn['s'], bn['se'], bn['act'], drop_rate))
             ic = bn['oc']
 
         # Build the last few blocks.
@@ -185,3 +189,12 @@ class MobileNetV3(nn.Module):  # TODO
         modules.append(HardSwish(inplace=True))
 
         return modules
+
+
+if __name__ == '__main__':
+    import torch
+    torch.manual_seed(42)
+    model = MobileNetV3(model_size='small', n_classes=10, head_type='conv', drop_rate=0.8)
+    x = torch.randn(16, 3, 32, 32)
+    results = model(x)
+    print(results.argmax(1))
