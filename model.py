@@ -34,6 +34,7 @@ module_defs = {
               {'k': 5, 'exp': 576, 'oc': 96, 'se': True, 'act': 'HS', 's': 1},
               {'k': 5, 'exp': 576, 'oc': 96, 'se': True, 'act': 'HS', 's': 1}]
 }
+initialisations = {'normal': nn.init.normal_, 'xavier': nn.init.xavier_normal_, 'kaiming': nn.init.kaiming_normal_}
 
 
 def calc_pad(k: int) -> int:
@@ -150,7 +151,12 @@ class Classifier(nn.Module):
 
 
 class MobileNetV3(nn.Module):  # TODO
-    def __init__(self, model_size: str, n_classes: int, head_type: str, drop_rate: Optional[float] = 0.):
+    def __init__(self,
+                 model_size: str,
+                 n_classes: int,
+                 head_type: str,
+                 initialisation: Optional[str] = 'normal',
+                 drop_rate: Optional[float] = None):
         assert model_size == 'small' or model_size == 'large',\
             "model_size should be 'small' or 'large'."
 
@@ -165,6 +171,7 @@ class MobileNetV3(nn.Module):  # TODO
 
         self.model = self._build_model(model_size, last_in, drop_rate)
         self.classifier = Classifier(head_type, last_in, last_out, n_classes)
+        self._init_weights(initialisation)
 
     def forward(self, x):
         y = self.model(x)
@@ -194,11 +201,26 @@ class MobileNetV3(nn.Module):  # TODO
 
         return modules
 
+    def _init_weights(self, initialisation):
+        init_function = initialisations[initialisation]
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                init_function(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.BatchNorm2d):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
 
 if __name__ == '__main__':
     import torch
     torch.manual_seed(42)
-    model = MobileNetV3(model_size='small', n_classes=10, head_type='conv', drop_rate=0.8)
+    model = MobileNetV3(model_size='small', n_classes=10, head_type='conv', initialisation='kaiming', drop_rate=0.8)
     x = torch.randn(16, 3, 32, 32)
     results = model(x)
     print(results.argmax(1))
