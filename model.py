@@ -1,4 +1,5 @@
 from typing import Optional
+import math
 
 from torch import nn
 import torch.nn.functional as F
@@ -156,20 +157,22 @@ class MobileNetV3(nn.Module):  # TODO
                  n_classes: int,
                  head_type: str,
                  initialisation: Optional[str] = 'normal',
-                 drop_rate: Optional[float] = None):
+                 drop_rate: Optional[float] = None,
+                 alpha=1.0):
         assert model_size == 'small' or model_size == 'large',\
             "model_size should be 'small' or 'large'."
+        assert 0. < alpha <= 1., "Width multiplier (alpha) is a value (0, 1]"
 
         super(MobileNetV3, self).__init__()
 
         if model_size == 'small':
-            last_in = 576
-            last_out = 1024
+            last_in = self._divisible(576 * alpha) if alpha < 1. else 576
+            last_out = self._divisible(1024 * alpha) if alpha < 1. else 1024
         elif model_size == 'large':
-            last_in = 960
-            last_out = 1280
+            last_in = self._divisible(960 * alpha) if alpha < 1. else 960
+            last_out = self._divisible(1280 * alpha) if alpha < 1. else 1280
 
-        self.model = self._build_model(model_size, last_in, drop_rate)
+        self.model = self._build_model(model_size, last_in, drop_rate, alpha)
         self.classifier = Classifier(head_type, last_in, last_out, n_classes)
         self._init_weights(initialisation)
 
@@ -178,9 +181,9 @@ class MobileNetV3(nn.Module):  # TODO
         y = self.classifier(y)
         return y
 
-    def _build_model(self, model_size: str, last_in: int, drop_rate: float) -> nn.Sequential:
+    def _build_model(self, model_size: str, last_in: int, drop_rate: float, alpha: float) -> nn.Sequential:
         modules = nn.Sequential()
-        ic = 16
+        ic = self._divisible(16 * alpha) if alpha < 1. else 16
 
         # Build the first block.
         block_0 = nn.Sequential(nn.Conv2d(3, ic, 3, stride=2, padding=calc_pad(3), bias=False),
@@ -191,8 +194,10 @@ class MobileNetV3(nn.Module):  # TODO
         # Build the MobileNet bottleneck blocks.
         defs = module_defs[model_size]
         for bn in defs:
-            modules.append(InvertedBottleNeck(ic, bn['oc'], bn['k'], bn['exp'], bn['s'], bn['se'], bn['act'], drop_rate))
-            ic = bn['oc']
+            oc = self._divisible(bn['oc'] * alpha) if alpha < 1. else bn['oc']
+            exp = self._divisible(bn['exp'] * alpha) if alpha < 1. else bn['exp']
+            modules.append(InvertedBottleNeck(ic, oc, bn['k'], exp, bn['s'], bn['se'], bn['act'], drop_rate))
+            ic = oc
 
         # Build the last few blocks.
         modules.append(nn.Conv2d(ic, last_in, 1, stride=1, bias=False))
@@ -216,11 +221,14 @@ class MobileNetV3(nn.Module):  # TODO
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 
+    def _divisible(self, n, divisible_by=4):
+        return int(math.ceil(n * 1. / divisible_by) * divisible_by)
+
 
 if __name__ == '__main__':
     import torch
     torch.manual_seed(42)
-    model = MobileNetV3(model_size='small', n_classes=10, head_type='conv', initialisation='kaiming', drop_rate=0.8)
+    model = MobileNetV3(model_size='small', n_classes=10, head_type='conv', initialisation='kaiming', drop_rate=0.8, alpha=0.8)
     x = torch.randn(16, 3, 32, 32)
     results = model(x)
     print(results.argmax(1))
