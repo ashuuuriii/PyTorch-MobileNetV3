@@ -1,0 +1,30 @@
+settings:
+  output_dir: "results/"  # trained model saved in output_dir/timestamp/.pth
+  seed: 42
+  log_interval: 1000  # TensorBoard log interval (per batch) for train loss and learning parameters.
+
+train_params:
+  epochs: 20
+ 
+optimizer_params:
+  lr: 0.1
+  momentum: 0.9
+  lr_decay: 0.01
+  lr_decay_step: 3
+  weight_decay: 0.00001
+
+dataset_params:
+  path: "data/"  # dataset root, dataset currently set to CIFAR100
+  batch_size: 128
+  img_size: 32
+  classes: 100
+
+model_params:
+  model_size: "small"  # "small" or "large", check tables 1 and 2 in paper for specifications.
+  initialisation_type: "xavier"  # "kaiming", "xavier", or "normal"
+  drop_out_probability: 0.8
+  width_multiplier: 1.0  # MN1 paper: typical values are (0.25, 0.5, 0.75, 1.0)
+  # Resolution multipllier from MN1 not implemented but could be implemented with transforms.Resize().
+  # New image size is img size * rho where rho is (0, 1].
+  classification_head: "conv"  # "conv" or "fc", MN3: conv(ic, k, 1, 1) or MN1: fc layer + softmax
+  
