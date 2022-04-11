@@ -18,6 +18,15 @@ dataset_params:
   batch_size: 128
   img_size: 32
   classes: 100
+  mean:  # pre-calculated mean for CIFAR100, use utils.py to recalculate.
+    - 0.5071
+    - 0.4865
+    - 0.4409
+
+  sd:  # pre-calculated sd for CIFAR100
+    - 0.2673
+    - 0.2564
+    - 0.2762
 
 model_params:
   model_size: "small"  # "small" or "large", check tables 1 and 2 in paper for specifications.
