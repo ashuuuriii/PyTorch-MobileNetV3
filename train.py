@@ -1,10 +1,19 @@
 import argparse
 import yaml
+from shutil import copyfile
+import time
+from datetime import datetime
+import os
+import sys
+import logging
+import argparse
 
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch import nn, optim
+from torch.utils.tensorboard import SummaryWriter
+from ptflops import get_model_complexity_info
 
 from model import MobileNetV3
 from utils import EMA
@@ -36,6 +45,23 @@ if __name__ == '__main__':
         opt_cfg = cfg['optimizer_params']
         data_cfg = cfg['dataset_params']
         model_cfg = cfg['model_params']
+
+    # Set up text logger, TensorBoard logging and logging directory.
+    ts = time.time()
+    ts = datetime.fromtimestamp(ts)
+    dir_ts = ts.strftime('%d%m%H%M%S')
+
+    output_dir = os.path.join(settings['output_dir'], dir_ts)
+    cfg_filename = args.cfg.split('/')[-1]
+    os.makedirs(output_dir, exist_ok=True)
+    copyfile(args.cfg, os.path.join(output_dir, cfg_filename))
+
+    logging.basicConfig(level=logging.DEBUG,
+                        handlers=[
+                            logging.FileHandler(os.path.join(output_dir, 'train.log')),
+                            logging.StreamHandler(sys.stdout)])
+
+    tf_logger = SummaryWriter(log_dir=output_dir)
 
     # Set device and random seed
     device = 'cuda' if torch.cuda.is_available() and not args.force_cpu else 'cpu'
@@ -70,6 +96,12 @@ if __name__ == '__main__':
                         drop_rate=model_cfg['drop_out_probability'],
                         alpha=model_cfg['width_multiplier'])
     model = model.to(device)
+
+    img_size = data_cfg['img_size']
+    macs, params = get_model_complexity_info(model, (3, img_size, img_size), print_per_layer_stat=False)
+
+    logging.info(f"MobileNetV3-{model_cfg['model_size']}, at {model_cfg['width_multiplier']}x")
+    logging.info(f"macs: {macs}, params: {params}")
 
     # Initialise the optimizer
     optimizer = optim.RMSprop(model.parameters(),
