@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from torch import nn, optim
 
 from model import MobileNetV3
+from utils import EMA
 
 
 def train():

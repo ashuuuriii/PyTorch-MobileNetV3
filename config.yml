@@ -5,6 +5,7 @@ settings:
 
 train_params:
   epochs: 20
+  ema: False  # set to 0 or False to turn off.
  
 optimizer_params:
   lr: 0.1
