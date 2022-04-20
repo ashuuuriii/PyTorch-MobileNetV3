@@ -19,16 +19,103 @@ from model import MobileNetV3
 from utils import EMA
 
 
-def train():
-    return
+def train(epochs,
+          train_loader,
+          val_loader,
+          model,
+          loss_fn,
+          optimizer,
+          output_dir,
+          device,
+          ema_decay=None,
+          tf_logger=None,
+          log_interval=10):
+    ema = EMA(model, ema_decay) if ema_decay else None
+    top_val_acc = 0.
+
+    for i in range(epochs):
+        logging.info(f"Epoch {i}\n-----------------------------")
+        train_epoch(train_loader, model, loss_fn, optimizer, device, i, ema, tf_logger, log_interval)
+        val_acc = validate(val_loader, model, loss_fn, device, i, ema, tf_logger)
+
+        if val_acc > top_val_acc:
+            model_pth = os.path.join(output_dir, "best.pth")
+            torch.save(model.state_dict(), model_pth)
+            top_val_acc = val_acc
+
+        model_pth = os.path.join(output_dir, f"epoch_{i}.pth")
+        torch.save(model.state_dict(), model_pth)
+
+    endtime = datetime.fromtimestamp(time.time())
+    logging.info(f"Training finished at {endtime.strftime('%d/%m/%y-%H:%M:%S')}")
+
+    if tf_logger:
+        tf_logger.close()
 
 
-def train_epoch():
-    return
+def train_epoch(dataloader, model, loss_fn, optimizer, device, epoch, ema=None, tf_logger=None, log_interval=10):
+    model.train()
+    size = len(dataloader.dataset)
+    for batch, (X, gt) in enumerate(dataloader):
+        X, gt = X.to(device), gt.to(device)
+
+        pred = model(X)  # forward
+        loss = loss_fn(pred, gt)  # compute loss
+
+        # backpropagate loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        if ema:
+            ema.update()
+
+        # log loss and weights
+        loss, current = loss.item(), batch * len(X)
+        accuracy = (pred.argmax(1) == gt).type(torch.float).sum().item()
+        accuracy = accuracy / pred.shape[0]
+        logging.info(f"train accuracy(top-1): {accuracy:>7f}, train loss: {loss:>7f} [{current:>5d}/{size:>5d}]")
+
+        if tf_logger and batch % log_interval == 0:
+            tf_logger.add_scalar(f'train/{epoch}/loss', loss, batch)
+            tf_logger.add_scalar(f'train/{epoch}/accuracy', accuracy, batch)
+            for name, module in model.named_modules():
+                if hasattr(module, 'weight'):
+                    tf_logger.add_histogram(f'weight/{name}', module.weight, batch)
+                elif hasattr(module, 'bias'):
+                    tf_logger.add_histogram(f'bias/{name}', module.bias, batch)
 
 
-def validate():
-    return
+def validate(dataloader, model, loss_fn, device, epoch, ema=None, tf_logger=None):
+    size = len(dataloader.dataset)
+    n_batches = len(dataloader)
+    val_loss, correct = 0, 0
+
+    with torch.no_grad():
+        model.eval()
+        if ema:
+            ema.apply()
+
+        for X, gt in dataloader:
+            X, gt = X.to(device), gt.to(device)
+            pred = model(X)
+            val_loss += loss_fn(pred, gt).item()
+            correct += (pred.argmax(1) == gt).type(torch.float).sum().item()
+            print(pred.argmax(1))
+
+    # log loss and accuracy
+    val_loss /= n_batches
+    accuracy = correct / size
+    logging.info(f"val accuracy(top-1): {(100*accuracy):>0.7f}%, avg loss: {val_loss:>8f}\n")
+
+    if ema:
+        ema.restore()
+
+    if tf_logger:
+        tf_logger.add_scalar('val/loss', val_loss, epoch)
+        tf_logger.add_scalar('val/accuracy', accuracy, epoch)
+
+    return accuracy
 
 
 if __name__ == '__main__':
@@ -114,3 +201,17 @@ if __name__ == '__main__':
                                            gamma=opt_cfg['lr_decay'])
 
     loss_fn = nn.CrossEntropyLoss()  # standard loss function for classification
+
+    # Start training
+    logging.info(f"Starting training at {ts.strftime('%d/%m/%y-%H:%M:%S')} on {device}.")
+    train(train_cfg['epochs'],
+          train_loader,
+          val_loader,
+          model,
+          loss_fn,
+          optimizer,
+          output_dir,
+          device,
+          ema_decay=train_cfg['ema'],
+          tf_logger=tf_logger,
+          log_interval=settings['log_interval'])
