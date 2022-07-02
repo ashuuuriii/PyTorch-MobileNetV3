@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
+from torch import nn
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
@@ -20,7 +21,9 @@ class EMA:
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 assert name in self.shadow
-                new_avg = (1. - self.decay_rate) * param.data + self.decay_rate * self.shadow[name]
+                new_avg = (
+                    1.0 - self.decay_rate
+                ) * param.data + self.decay_rate * self.shadow[name]
                 self.shadow[name] = new_avg.clone()
 
     def restore(self):
@@ -47,13 +50,13 @@ def calc_mean_sd(dataloader: DataLoader):
         n_batches += 1
 
     mean = ch_sum / n_batches
-    sd = (ch_sum_sqrt / n_batches - mean ** 2) ** 0.5
+    sd = (ch_sum_sqrt / n_batches - mean**2) ** 0.5
     return mean, sd
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     torch.manual_seed(42)
-    dataset = datasets.CIFAR100('data', train=True, download=True, transform=ToTensor())
+    dataset = datasets.CIFAR100("data", train=True, download=True, transform=ToTensor())
     dataloader = DataLoader(dataset, batch_size=128)
     mean, sd = calc_mean_sd(dataloader)
     print(f"mean: {mean}, sd: {sd}")
